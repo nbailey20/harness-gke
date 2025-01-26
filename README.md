@@ -3,7 +3,9 @@
 Repo contains everything needed to stand up a CI/CD pipeline hosted in GKE that integrates with GitHub repositories.
 
 High-Level Setup Steps:
-* Apply Terraform script to create GKE cluster, Artifact Registry, and Harness Open Source pods
+* Apply Terraform script
+    * GCP provider will create GKE cluster, Artifact Registry, Persistent Disk
+    * Kubernetes provider will create Persistent Volume, Persistent Volume Claim, Harness Open Source pod
 * Create project and pipeline in Harness, import Github repo
 * Clone Harness repo locally
 * Create custom Docker image once Harness is fully setup
@@ -15,3 +17,4 @@ High-Level Setup Steps:
 
 ## Prerequisite
 * GCP Project and gcloud installed
+* Run this gcloud command before applying Terraform: gcloud auth application-default login

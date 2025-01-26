@@ -1,21 +1,12 @@
-terraform {
-  required_providers {
-    google = {
-      source = "hashicorp/google"
-      version = var.gcp_provider_version
-    }
-  }
-}
-
 provider "google" {
-  project     = var.project_id
-  region      = var.region
+  project = var.project_id
+  region  = var.region
 }
 
 
 resource "google_compute_network" "default" {
-  name = "example-network"
-  auto_create_subnetworks  = false
+  name                    = "example-network"
+  auto_create_subnetworks = false
 }
 
 resource "google_compute_subnetwork" "default" {
@@ -31,8 +22,16 @@ resource "google_container_cluster" "default" {
   enable_autopilot = true
   network          = google_compute_network.default.id
   subnetwork       = google_compute_subnetwork.default.id
+  node_locations   = var.node_zones
 
   # Set `deletion_protection` to `true` will ensure that one cannot
   # accidentally delete this instance by use of Terraform.
   deletion_protection = false
+}
+
+resource "google_compute_region_disk" "default" {
+  name = "harness-gke-pd"
+  size = 10
+  type = "pd-ssd"
+  replica_zones = var.node_zones
 }
