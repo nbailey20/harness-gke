@@ -12,15 +12,23 @@ provider "kubernetes" {
 }
 
 resource "kubernetes_namespace_v1" "default" {
+  count = var.sleep_mode ? 0 : 1
+
   metadata {
     name = "harness-ns"
   }
+
+  ## ensure that k8s resources are cleaned up before pool is deleted 
+  ## otherwise TF will keep trying to destroy resources when node is gone
+  depends_on = [ google_container_node_pool.default ]
 }
 
 resource "kubernetes_deployment_v1" "default" {
+  count = var.sleep_mode ? 0 : 1
+
   metadata {
     name      = "harness-gke-deployment"
-    namespace = kubernetes_namespace_v1.default.metadata[0].name
+    namespace = kubernetes_namespace_v1.default[0].metadata[0].name
   }
 
   spec {
@@ -41,95 +49,97 @@ resource "kubernetes_deployment_v1" "default" {
         container {
           image = "harness/harness:latest"
           name  = "harness-gke-container"
-
           port {
             container_port = 3000
-            # name           = "harness-gke-svc"
+            name           = "harness-3000"
           }
           port {
             container_port = 3022
-            # name           = "harness-gke-svc"
+            name           = "harness-3022"
           }
-
           liveness_probe {
             http_get {
               path = "/"
               port = "harness-gke-svc"
             }
-
             initial_delay_seconds = 3
             period_seconds        = 3
-          }
-
-          volume_mount {
-            name       = "docker-sock"
-            mount_path = "/var/run/docker.sock"
           }
           volume_mount {
             name       = "harness-data"
             mount_path = "/data"
           }
+          env {
+            name  = "DOCKER_HOST"
+            value = "tcp://localhost:2375"
+          }
+        }
+        container {
+          image = "docker:dind"
+          name  = "dind"
+          security_context {
+            privileged = true
+          }
+          port {
+            container_port = 2375
+            name           = "dind-2375"
+          }
+          volume_mount {
+            name       = "docker-graph-storage"
+            mount_path = "/var/lib/docker"
+          }
+          env {
+            name  = "DOCKER_TLS_CERTDIR"
+            value = ""
+          }
         }
 
         volume {
-          name = "docker-sock"
+          name = "docker-graph-storage"
           empty_dir {}
         }
         volume {
           name = "harness-data"
           persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim_v1.default.metadata[0].name
+            claim_name = kubernetes_persistent_volume_claim_v1.default[0].metadata[0].name
           }
         }
-
-        # # Toleration is currently required to prevent perpetual diff:
-        # # https://github.com/hashicorp/terraform-provider-kubernetes/pull/2380
-        # toleration {
-        #   effect   = "NoSchedule"
-        #   key      = "kubernetes.io/arch"
-        #   operator = "Equal"
-        #   value    = "amd64"
-        # }
       }
     }
   }
 }
 
 resource "kubernetes_service_v1" "default" {
+  count = var.sleep_mode ? 0 : 1
+
   metadata {
     name      = "harness-gke-loadbalancer"
-    namespace = kubernetes_namespace_v1.default.metadata[0].name
+    namespace = kubernetes_namespace_v1.default[0].metadata[0].name
   }
 
   spec {
     selector = {
-      app = kubernetes_deployment_v1.default.spec[0].selector[0].match_labels.app
+      app = kubernetes_deployment_v1.default[0].spec[0].selector[0].match_labels.app
     }
 
     port {
+      name        = "harness-3000"
       port        = 3000
-      target_port = kubernetes_deployment_v1.default.spec[0].template[0].spec[0].container[0].port[0].container_port
+      target_port = kubernetes_deployment_v1.default[0].spec[0].template[0].spec[0].container[0].port[0].container_port
     }
     port {
+      name        = "harness-3022"
       port        = 3022
-      target_port = kubernetes_deployment_v1.default.spec[0].template[0].spec[0].container[0].port[1].container_port
+      target_port = kubernetes_deployment_v1.default[0].spec[0].template[0].spec[0].container[0].port[1].container_port
     }
 
     type = "LoadBalancer"
   }
-
-  #   depends_on = [time_sleep.wait_service_cleanup]
 }
 
-# Provide time for Service cleanup
-# resource "time_sleep" "wait_service_cleanup" {
-#   depends_on = [google_container_cluster.default]
-
-#   destroy_duration = "180s"
-# }
-
-
 resource "kubernetes_persistent_volume_v1" "default" {
+  count = var.sleep_mode ? 0 : 1
+
   metadata {
     name = "harness-gke-pv"
   }
@@ -141,13 +151,13 @@ resource "kubernetes_persistent_volume_v1" "default" {
     }
     access_modes = ["ReadWriteOnce"]
     claim_ref {
-      name      = kubernetes_persistent_volume_claim_v1.default.metadata[0].name
-      namespace = kubernetes_namespace_v1.default.metadata[0].name
+      name      = "harness-gke-pvc"
+      namespace = kubernetes_namespace_v1.default[0].metadata[0].name
     }
     persistent_volume_source {
       csi {
         driver        = "pd.csi.storage.gke.io"
-        volume_handle = google_compute_region_disk.default.id
+        volume_handle = google_compute_disk.default.id
         fs_type       = "ext4"
       }
     }
@@ -155,9 +165,11 @@ resource "kubernetes_persistent_volume_v1" "default" {
 }
 
 resource "kubernetes_persistent_volume_claim_v1" "default" {
+  count = var.sleep_mode ? 0 : 1
+
   metadata {
     name      = "harness-gke-pvc"
-    namespace = kubernetes_namespace_v1.default.metadata[0].name
+    namespace = kubernetes_namespace_v1.default[0].metadata[0].name
   }
 
   spec {
@@ -170,5 +182,5 @@ resource "kubernetes_persistent_volume_claim_v1" "default" {
       }
     }
   }
-  depends_on = [ google_compute_region_disk.default ]
+  depends_on = [google_compute_disk.default, kubernetes_persistent_volume_v1.default]
 }

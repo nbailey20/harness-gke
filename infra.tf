@@ -19,19 +19,33 @@ resource "google_compute_subnetwork" "default" {
 resource "google_container_cluster" "default" {
   name = "example-autopilot-cluster"
 
-  enable_autopilot = true
-  network          = google_compute_network.default.id
-  subnetwork       = google_compute_subnetwork.default.id
-  node_locations   = var.node_zones
+  network                  = google_compute_network.default.id
+  subnetwork               = google_compute_subnetwork.default.id
+  node_locations           = [var.node_zone]
+  initial_node_count       = 1
+  remove_default_node_pool = true
 
   # Set `deletion_protection` to `true` will ensure that one cannot
   # accidentally delete this instance by use of Terraform.
   deletion_protection = false
 }
 
-resource "google_compute_region_disk" "default" {
+resource "google_container_node_pool" "default" {
+  count = var.sleep_mode ? 0 : 1
+
+  name       = "harness-gke-np"
+  cluster    = google_container_cluster.default.name
+  node_count = 1
+
+  node_config {
+    preemptible  = true
+    machine_type = "e2-medium"
+  }
+}
+
+resource "google_compute_disk" "default" {
   name = "harness-gke-pd"
   size = 10
   type = "pd-ssd"
-  replica_zones = var.node_zones
+  zone = var.node_zone
 }

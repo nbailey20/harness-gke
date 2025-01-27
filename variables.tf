@@ -13,7 +13,13 @@ variable "harness_image" {
   type        = string
 }
 
-variable "node_zones" {
-  description = "Zones where GKE nodes should be deployed"
-  type        = list(string)
+variable "node_zone" {
+  description = "GCP zone where GKE node should be deployed"
+  type        = string
+}
+
+variable "sleep_mode" {
+  description = "Boolean indicating whether pipeline is actively being used, if true then K8s resources / cluster node will be removed for $$ savings"
+  type        = bool
+  default     = false
 }
